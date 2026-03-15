@@ -57,31 +57,51 @@ impl CascadeSdk {
     }
 
     pub fn create_layout_b64(file_path: &Path) -> Result<String, SdkError> {
+        #[derive(serde::Deserialize, serde::Serialize)]
+        struct GoLayout {
+            blocks: Vec<GoBlock>,
+        }
+        #[derive(serde::Deserialize, serde::Serialize)]
+        struct GoBlock {
+            block_id: i32,
+            encoder_parameters: Vec<u8>,
+            original_offset: i64,
+            size: i64,
+            symbols: Vec<String>,
+            hash: String,
+        }
+
         let cfg = rq_library::ProcessorConfig {
             symbol_size: 65535,
             redundancy_factor: 6,
-            max_memory_mb: 4096,
+            max_memory_mb: 8192,
             concurrency_limit: 1,
         };
         let processor = rq_library::RaptorQProcessor::new(cfg);
+
+        // Match supernode codec defaults (single-block deterministic metadata)
+        let block_size: usize = 1280 * 1024 * 1024;
         let result = processor
             .create_metadata(
                 file_path
                     .to_str()
                     .ok_or_else(|| SdkError::InvalidInput("non-utf8 file path".into()))?,
                 "",
-                0,
+                block_size,
             )
             .map_err(|e| SdkError::Serialization(format!("rq create_metadata: {e}")))?;
-        let layout = result
+
+        let layout_raw = result
             .layout_content
             .ok_or_else(|| SdkError::Serialization("missing layout content".into()))?;
-        let compact = serde_json::to_vec(
-            &serde_json::from_str::<serde_json::Value>(&layout)
-                .map_err(|e| SdkError::Serialization(e.to_string()))?,
-        )
-        .map_err(|e| SdkError::Serialization(e.to_string()))?;
-        Ok(STANDARD.encode(compact))
+
+        // Re-marshal with Go codec field order to match supernode LayoutB64 bytes exactly.
+        let go_layout: GoLayout = serde_json::from_str(&layout_raw)
+            .map_err(|e| SdkError::Serialization(format!("parse layout json: {e}")))?;
+        let go_json = serde_json::to_vec(&go_layout)
+            .map_err(|e| SdkError::Serialization(format!("marshal layout json: {e}")))?;
+
+        Ok(STANDARD.encode(go_json))
     }
 
     pub fn generate_ids(base: &str, ic: u32, max: u32) -> Result<Vec<String>, SdkError> {
