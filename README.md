@@ -110,6 +110,44 @@ See:
 
 ---
 
+## Simple Browser UI (sdk-rs API)
+
+This repo now includes a minimal browser UI similar to `sdk-js/examples/browser`, but backed by `sdk-rs` API handlers:
+
+- UI: `examples/ui/index.html`
+- API server: `examples/ui_server.rs`
+
+Run it:
+
+```bash
+cd sdk-rs
+export LUMERA_MNEMONIC="..."
+export LUMERA_CREATOR="lumera1..."
+SNAPI_BASE=http://127.0.0.1:8089 cargo run --example ui_server
+```
+
+Then open:
+
+```text
+http://127.0.0.1:3002
+```
+
+Optional env:
+- `SDK_RS_UI_PORT` (default `3002`)
+- `SNAPI_BASE` (default `http://127.0.0.1:8089`)
+- `LUMERA_MNEMONIC` (required for automatic register/sign flow)
+- `LUMERA_CREATOR` (sender address; defaults to local dev value if omitted)
+- `LUMERA_REST`, `LUMERA_RPC`, `LUMERA_GRPC`, `LUMERA_CHAIN_ID`
+
+The UI calls Rust endpoints under `/api/*`, with no manual action/signature input:
+- `POST /api/workflow/upload` (register ticket + sign + start upload)
+- `GET /api/upload/{task_id}/summary`
+- `POST /api/workflow/download` (uses last uploaded action by default)
+- `GET /api/download/{task_id}/summary`
+- `GET /api/download/{task_id}/file`
+
+---
+
 ## Golden test (what it means)
 
 In this repo, **golden test** means a full-system integration run against a real Lumera + `sn-api-server` stack, with strict pass criteria:

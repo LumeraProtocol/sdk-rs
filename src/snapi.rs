@@ -19,7 +19,7 @@ async fn parse_json_or_sse(resp: reqwest::Response) -> Result<serde_json::Value,
         return serde_json::from_str(&body).map_err(|e| SdkError::Serialization(e.to_string()));
     }
 
-    // sn-api status endpoints can stream SSE: "data: {json}\n\n"
+    // sn-api status endpoints can stream SSE: "data: {json}\\n\\n"
     if content_type.contains("text/event-stream") || body.contains("data:") {
         let mut last_json: Option<&str> = None;
         for line in body.lines() {
@@ -117,21 +117,14 @@ impl SnApiClient {
             .map_err(|e| SdkError::Http(e.to_string()))
     }
 
-    pub async fn start_cascade(
+    pub async fn start_cascade_bytes(
         &self,
         action_id: &str,
         signature: &str,
-        file_path: &Path,
+        file_name: &str,
+        file_bytes: Vec<u8>,
     ) -> Result<String, SdkError> {
-        let bytes = tokio::fs::read(file_path)
-            .await
-            .map_err(|e| SdkError::Http(e.to_string()))?;
-        let file_name = file_path
-            .file_name()
-            .and_then(|x| x.to_str())
-            .unwrap_or("upload.bin")
-            .to_string();
-        let part = reqwest::multipart::Part::bytes(bytes).file_name(file_name);
+        let part = reqwest::multipart::Part::bytes(file_bytes).file_name(file_name.to_string());
         let form = reqwest::multipart::Form::new()
             .text("action_id", action_id.to_string())
             .text("signature", signature.to_string())
@@ -169,6 +162,25 @@ impl SnApiClient {
             return Err(SdkError::Serialization("missing task id".into()));
         }
         Ok(task_id)
+    }
+
+    pub async fn start_cascade(
+        &self,
+        action_id: &str,
+        signature: &str,
+        file_path: &Path,
+    ) -> Result<String, SdkError> {
+        let bytes = tokio::fs::read(file_path)
+            .await
+            .map_err(|e| SdkError::Http(e.to_string()))?;
+        let file_name = file_path
+            .file_name()
+            .and_then(|x| x.to_str())
+            .unwrap_or("upload.bin")
+            .to_string();
+
+        self.start_cascade_bytes(action_id, signature, &file_name, bytes)
+            .await
     }
 
     pub async fn request_download(
@@ -252,6 +264,25 @@ mod tests {
         let c = SnApiClient::new(server.uri());
         let task = c.start_cascade("a1", "sig", &fp).await.unwrap();
         assert_eq!(task, "t1");
+    }
+
+    #[tokio::test]
+    async fn tdd_start_cascade_bytes_parses_task() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/actions/cascade"))
+            .respond_with(
+                ResponseTemplate::new(202).set_body_json(serde_json::json!({"task_id":"t2"})),
+            )
+            .mount(&server)
+            .await;
+
+        let c = SnApiClient::new(server.uri());
+        let task = c
+            .start_cascade_bytes("a2", "sig", "file.bin", b"hello".to_vec())
+            .await
+            .unwrap();
+        assert_eq!(task, "t2");
     }
 
     #[tokio::test]
