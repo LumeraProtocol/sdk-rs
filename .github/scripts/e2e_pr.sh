@@ -98,8 +98,15 @@ restart_snapi() {
   HTTP_PORT="$SNAPI_PORT" \
   nohup sn-api-server serve > "$DEVNET_RUN/logs/sn-api-server.log" 2>&1 &
 
-  sleep 3
-  curl -sf "http://127.0.0.1:${SNAPI_PORT}/api/v1/actions/cascade/tasks" >/dev/null
+  local retries=0
+  while ! curl -sf "http://127.0.0.1:${SNAPI_PORT}/api/v1/actions/cascade/tasks" >/dev/null 2>&1; do
+    retries=$((retries + 1))
+    if (( retries > 10 )); then
+      echo "sn-api-server failed to become ready" >&2
+      return 1
+    fi
+    sleep 2
+  done
 }
 
 start_stack() {

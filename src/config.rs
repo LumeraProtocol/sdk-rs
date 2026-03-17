@@ -108,6 +108,49 @@ impl SdkSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    const ENV_KEYS: [&str; 6] = [
+        "LUMERA_CHAIN_ID",
+        "LUMERA_GRPC",
+        "LUMERA_RPC",
+        "LUMERA_REST",
+        "LUMERA_GAS_PRICE",
+        "SNAPI_BASE",
+    ];
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvGuard {
+        prev: Vec<(String, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn clear_for_test() -> Self {
+            let prev = ENV_KEYS
+                .iter()
+                .map(|k| (k.to_string(), std::env::var(k).ok()))
+                .collect::<Vec<_>>();
+            for k in ENV_KEYS {
+                std::env::remove_var(k);
+            }
+            Self { prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (k, v) in &self.prev {
+                match v {
+                    Some(val) => std::env::set_var(k, val),
+                    None => std::env::remove_var(k),
+                }
+            }
+        }
+    }
 
     #[test]
     fn tdd_default_settings_to_cascade_cfg() {
@@ -119,7 +162,8 @@ mod tests {
 
     #[test]
     fn tdd_load_toml_file() {
-        std::env::remove_var("SNAPI_BASE");
+        let _guard = env_lock().lock().unwrap();
+        let _env_guard = EnvGuard::clear_for_test();
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("sdk.toml");
         fs::write(
@@ -128,7 +172,7 @@ mod tests {
 chain_id = "lumera-testnet-2"
 grpc_endpoint = "https://grpc.testnet.lumera.io"
 rpc_endpoint = "https://rpc.testnet.lumera.io"
-rest_endpoint = "https://rest.testnet.lumera.io"
+rest_endpoint = "https://lcd.testnet.lumera.io"
 gas_price = "0.025ulume"
 snapi_base = "https://snapi.testnet.example"
 "#,

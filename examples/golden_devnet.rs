@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
     let rest = std::env::var("LUMERA_REST").unwrap_or_else(|_| "http://127.0.0.1:1317".into());
     let rpc = std::env::var("LUMERA_RPC").unwrap_or_else(|_| "http://127.0.0.1:26657".into());
     let grpc = std::env::var("LUMERA_GRPC").unwrap_or_else(|_| "http://127.0.0.1:9090".into());
-    let snapi = std::env::var("SNAPI_BASE").unwrap_or_else(|_| "http://127.0.0.1:8089".into());
+    let snapi = std::env::var("SNAPI_BASE").unwrap_or_else(|_| "http://127.0.0.1:8080".into());
     let chain_id = std::env::var("LUMERA_CHAIN_ID").unwrap_or_else(|_| "lumera-devnet".into());
     let creator = std::env::var("LUMERA_CREATOR")
         .unwrap_or_else(|_| "lumera158ulqepc5wnlx04eqqs7hkhr9rs2een275qkpp".into());

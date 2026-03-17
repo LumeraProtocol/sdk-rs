@@ -20,10 +20,10 @@ GOLDEN_INPUT="${GOLDEN_INPUT:-/tmp/cascade-e2e/golden-input-65536.bin}"
 : > "$RUN_LOG"
 
 log "Public endpoint sanity checks"
-curl -fsSL "$SNAPI_BASE/api/v1/swagger/" >/dev/null
-curl -fsSL "$SNAPI_BASE/api/v1/actions/cascade/tasks" >/dev/null
-curl -fsSL "$LUMERA_RPC/status" >/dev/null
-curl -fsSL "$LUMERA_REST/cosmos/base/tendermint/v1beta1/node_info" >/dev/null
+curl -fsSL --retry 3 --retry-delay 2 "$SNAPI_BASE/api/v1/swagger/" >/dev/null
+curl -fsSL --retry 3 --retry-delay 2 "$SNAPI_BASE/api/v1/actions/cascade/tasks" >/dev/null
+curl -fsSL --retry 3 --retry-delay 2 "$LUMERA_RPC/status" >/dev/null
+curl -fsSL --retry 3 --retry-delay 2 "$LUMERA_REST/cosmos/base/tendermint/v1beta1/node_info" >/dev/null
 
 if command -v cargo >/dev/null 2>&1; then
   CARGO_BIN=cargo

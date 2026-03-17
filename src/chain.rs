@@ -183,7 +183,7 @@ impl ChainClient {
         let account = self.get_base_account(&tx.creator).await?;
 
         let msg = MsgRequestActionProto {
-            creator: tx.creator,
+            creator: tx.creator.clone(),
             action_type: tx.action_type,
             metadata: tx.metadata,
             price: tx.price,
@@ -215,10 +215,11 @@ impl ChainClient {
             .map_err(|e| SdkError::Http(e.to_string()))?;
 
         let mut seq = account.sequence;
+        let mut account_number = account.account_number;
         for _attempt in 0..3 {
             let auth = SignerInfo::single_direct(Some(signing_key.public_key()), seq)
                 .auth_info(Fee::from_amount_and_gas(fee_coin.clone(), 500_000u64));
-            let sign_doc = SignDoc::new(&tx_body, &auth, &chain_id, account.account_number)
+            let sign_doc = SignDoc::new(&tx_body, &auth, &chain_id, account_number)
                 .map_err(|e| SdkError::Chain(e.to_string()))?;
             let tx_raw = sign_doc
                 .sign(signing_key)
@@ -232,7 +233,12 @@ impl ChainClient {
                 let log = rsp.check_tx.log.to_string();
                 if let Some(expected) = parse_expected_sequence(&log) {
                     if expected != seq {
-                        seq = expected;
+                        if let Ok(refreshed) = self.get_base_account(&tx.creator).await {
+                            seq = refreshed.sequence;
+                            account_number = refreshed.account_number;
+                        } else {
+                            seq = expected;
+                        }
                         continue;
                     }
                 }
@@ -242,7 +248,12 @@ impl ChainClient {
                 let log = rsp.tx_result.log.to_string();
                 if let Some(expected) = parse_expected_sequence(&log) {
                     if expected != seq {
-                        seq = expected;
+                        if let Ok(refreshed) = self.get_base_account(&tx.creator).await {
+                            seq = refreshed.sequence;
+                            account_number = refreshed.account_number;
+                        } else {
+                            seq = expected;
+                        }
                         continue;
                     }
                 }

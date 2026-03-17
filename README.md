@@ -96,9 +96,12 @@ Common env vars:
 ## Quick start
 
 See:
-- `examples/golden_devnet.rs`
+- `examples/golden_devnet.rs` (full E2E register/upload/download/hash)
+- `examples/from_env_settings.rs` (load config from env + construct SDK)
+- `examples/custom_config.rs` (explicit in-code endpoint config)
+- `examples/README.md` (examples index)
 
-That example executes full flow:
+`golden_devnet.rs` executes full flow:
 1) register ticket
 2) upload
 3) request download
