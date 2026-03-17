@@ -1,14 +1,19 @@
-use std::{path::PathBuf, str::FromStr, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use bip32::{DerivationPath, XPrv};
 use bip39::Mnemonic;
 use k256::ecdsa::SigningKey as K256SigningKey;
 use lumera_sdk_rs::{CascadeConfig, CascadeSdk, RegisterTicketRequest};
 
-fn derive_signing_keys(mnemonic: &str) -> anyhow::Result<(cosmrs::crypto::secp256k1::SigningKey, K256SigningKey)> {
+fn derive_signing_keys(
+    mnemonic: &str,
+) -> anyhow::Result<(cosmrs::crypto::secp256k1::SigningKey, K256SigningKey)> {
     let m = Mnemonic::parse(mnemonic)?;
-    let seed = m.to_seed(""
-    );
+    let seed = m.to_seed("");
     let path = DerivationPath::from_str("m/44'/118'/0'/0/0")?;
     let xprv = XPrv::derive_from_path(seed, &path)?;
     let sk_bytes = xprv.private_key().to_bytes();
@@ -41,10 +46,12 @@ async fn main() -> anyhow::Result<()> {
     let grpc = std::env::var("LUMERA_GRPC").unwrap_or_else(|_| "http://127.0.0.1:9090".into());
     let snapi = std::env::var("SNAPI_BASE").unwrap_or_else(|_| "http://127.0.0.1:8089".into());
     let chain_id = std::env::var("LUMERA_CHAIN_ID").unwrap_or_else(|_| "lumera-devnet".into());
-    let creator = std::env::var("LUMERA_CREATOR").unwrap_or_else(|_| "lumera158ulqepc5wnlx04eqqs7hkhr9rs2een275qkpp".into());
+    let creator = std::env::var("LUMERA_CREATOR")
+        .unwrap_or_else(|_| "lumera158ulqepc5wnlx04eqqs7hkhr9rs2een275qkpp".into());
     let mnemonic = std::env::var("LUMERA_MNEMONIC")?;
 
-    let input_path = std::env::var("GOLDEN_INPUT").unwrap_or_else(|_| "/tmp/lumera-rs-golden-input.bin".into());
+    let input_path =
+        std::env::var("GOLDEN_INPUT").unwrap_or_else(|_| "/tmp/lumera-rs-golden-input.bin".into());
     let input_path = PathBuf::from(input_path);
     if !input_path.exists() {
         tokio::fs::write(&input_path, b"lumera sdk-rs golden test payload\n").await?;
@@ -88,7 +95,11 @@ async fn main() -> anyhow::Result<()> {
     eprintln!("registered action_id={}", registered.action_id);
 
     let up_task = sdk
-        .upload_via_snapi(&registered.action_id, &registered.auth_signature, &input_path)
+        .upload_via_snapi(
+            &registered.action_id,
+            &registered.auth_signature,
+            &input_path,
+        )
         .await?;
     eprintln!("upload task_id={}", up_task);
 
@@ -132,6 +143,12 @@ async fn main() -> anyhow::Result<()> {
         ));
     }
 
-    println!("GOLDEN_OK action_id={} upload_task={} download_task={} hash={}", registered.action_id, up_task, down_task, h1.to_hex());
+    println!(
+        "GOLDEN_OK action_id={} upload_task={} download_task={} hash={}",
+        registered.action_id,
+        up_task,
+        down_task,
+        h1.to_hex()
+    );
     Ok(())
 }
