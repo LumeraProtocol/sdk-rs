@@ -144,11 +144,10 @@ fn derive_signing_keys(
         error: format!("failed deriving key from mnemonic: {e}"),
     })?;
     let sk_bytes = xprv.private_key().to_bytes();
-    let chain_sk = cosmrs::crypto::secp256k1::SigningKey::from_slice(&sk_bytes).map_err(|e| {
-        ApiError {
+    let chain_sk =
+        cosmrs::crypto::secp256k1::SigningKey::from_slice(&sk_bytes).map_err(|e| ApiError {
             error: format!("failed creating chain signing key: {e}"),
-        }
-    })?;
+        })?;
     let arb_sk = K256SigningKey::from_slice(&sk_bytes).map_err(|e| ApiError {
         error: format!("failed creating arbitrary signing key: {e}"),
     })?;
@@ -250,9 +249,11 @@ async fn auth_verify(
 
     let challenge = {
         let mut challenges = state.challenges.lock().await;
-        challenges.remove(&body.challenge_id).ok_or_else(|| ApiError {
-            error: "challenge not found or already used".into(),
-        })?
+        challenges
+            .remove(&body.challenge_id)
+            .ok_or_else(|| ApiError {
+                error: "challenge not found or already used".into(),
+            })?
     };
 
     if challenge.expires_at <= now {
@@ -358,13 +359,9 @@ async fn workflow_upload(
     let mut file_name = String::from("upload.bin");
     let mut file_bytes: Option<Vec<u8>> = None;
 
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| ApiError {
-            error: format!("invalid multipart body: {e}"),
-        })?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|e| ApiError {
+        error: format!("invalid multipart body: {e}"),
+    })? {
         let name = field.name().unwrap_or_default().to_string();
         if name == "file" {
             if let Some(n) = field.file_name() {
@@ -430,7 +427,11 @@ async fn workflow_upload(
 
     let upload_task_id = state
         .sdk
-        .upload_via_snapi(&registered.action_id, &registered.auth_signature, tmp.path())
+        .upload_via_snapi(
+            &registered.action_id,
+            &registered.auth_signature,
+            tmp.path(),
+        )
         .await
         .map_err(|e| ApiError {
             error: format!("upload failed: {e}"),
