@@ -47,7 +47,6 @@ struct LatestState {
 
 #[derive(Clone)]
 struct SessionState {
-    address: String,
     expires_at: u64,
 }
 
@@ -280,7 +279,7 @@ async fn auth_verify(
     // account = RIPEMD160(SHA256(pubkey_bytes))
     let sha = Sha256::digest(&pubkey_bytes);
     let ripe = Ripemd160::digest(sha);
-    let account = ripe.as_slice();
+    let account: &[u8] = ripe.as_ref();
     let account_id = cosmrs::AccountId::new("lumera", account).map_err(|e| ApiError {
         error: format!("failed to derive lumera address from pubkey: {e}"),
     })?;
@@ -312,7 +311,6 @@ async fn auth_verify(
         sessions.insert(
             token.clone(),
             SessionState {
-                address: body.address.trim().to_string(),
                 expires_at: now + 8 * 60 * 60,
             },
         );
