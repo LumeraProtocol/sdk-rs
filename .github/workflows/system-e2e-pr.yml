@@ -1,0 +1,55 @@
+name: System E2E (PR, public sn-api)
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: system-e2e-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  public-snapi-e2e:
+    name: public sn-api testnet e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout sdk-rs (PR)
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run public sn-api E2E gate
+        env:
+          LUMERA_CHAIN_ID: lumera-testnet-2
+          LUMERA_REST: https://lcd.testnet.lumera.io
+          LUMERA_RPC: https://rpc.testnet.lumera.io
+          LUMERA_GRPC: https://grpc.testnet.lumera.io
+          SNAPI_BASE: https://snapi.testnet.lumera.io
+          GOLDEN_INPUT: /tmp/cascade-e2e/golden-input-65536.bin
+          FILE_SIZE: "65536"
+          # Optional for full register/upload/download/hash path.
+          # If omitted, script runs public smoke checks only.
+          LUMERA_MNEMONIC: ${{ secrets.TESTNET_E2E_MNEMONIC }}
+          LUMERA_CREATOR: ${{ secrets.TESTNET_E2E_CREATOR }}
+          REPORT_DIR: ${{ github.workspace }}/artifacts/e2e
+        run: |
+          set -euo pipefail
+          chmod +x ./.github/scripts/e2e_public_pr.sh
+          ./.github/scripts/e2e_public_pr.sh
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-e2e-pr-public-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          path: artifacts/e2e/**
+          if-no-files-found: warn

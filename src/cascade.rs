@@ -16,6 +16,20 @@ pub struct CascadeConfig {
     pub snapi_base: String,
 }
 
+impl CascadeConfig {
+    pub fn new(chain: crate::chain::ChainConfig, snapi_base: impl Into<String>) -> Self {
+        Self {
+            chain,
+            snapi_base: snapi_base.into(),
+        }
+    }
+
+    pub fn with_snapi_base(mut self, snapi_base: impl Into<String>) -> Self {
+        self.snapi_base = snapi_base.into();
+        self
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RegisterTicketRequest {
     pub file_name: String,
@@ -108,7 +122,9 @@ impl CascadeSdk {
         let mut out = Vec::with_capacity(max as usize);
         for i in 0..max {
             let payload = format!("{}.{}", base, ic + i);
-            let compressed = zstd::stream::encode_all(payload.as_bytes(), 3)
+            // Supernode/chain ID derivation uses one-shot zstd level-3 compression
+            // before blake3+base58; use bulk mode for byte-compatibility.
+            let compressed = zstd::bulk::compress(payload.as_bytes(), 3)
                 .map_err(|e| SdkError::Serialization(e.to_string()))?;
             let hash = blake3::hash(&compressed);
             out.push(bs58::encode(hash.as_bytes()).into_string());
@@ -167,9 +183,10 @@ impl CascadeSdk {
             "signatures": signatures,
             "public": req.is_public
         });
-        let metadata_json = serde_json::to_string(&metadata).map_err(|e| SdkError::Serialization(e.to_string()))?;
+        let metadata_json =
+            serde_json::to_string(&metadata).map_err(|e| SdkError::Serialization(e.to_string()))?;
 
-        let file_size_kbs = ((file_bytes.len() as u64) + 1023) / 1024;
+        let file_size_kbs = (file_bytes.len() as u64).div_ceil(1024);
         let fee_amount = self.chain.get_action_fee_amount(file_size_kbs).await?;
         let price = if fee_amount.chars().all(|c| c.is_ascii_digit()) {
             format!("{}{}", fee_amount, params.base_action_fee_denom)
@@ -209,7 +226,9 @@ impl CascadeSdk {
         signature: &str,
         file_path: &Path,
     ) -> Result<String, SdkError> {
-        self.snapi.start_cascade(action_id, signature, file_path).await
+        self.snapi
+            .start_cascade(action_id, signature, file_path)
+            .await
     }
 
     pub async fn request_download(

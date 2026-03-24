@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumera SDK-RS Browser Demo</title>
+  <style>
+    :root {
+      --bg-a: #0f172a;
+      --bg-b: #1e293b;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --line: #e2e8f0;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --info: #60a5fa;
+      --btn-a: #0284c7;
+      --btn-b: #0369a1;
+      --btn-2a: #475569;
+      --btn-2b: #334155;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top left, #1d4ed8, transparent 45%),
+        radial-gradient(circle at bottom right, #0891b2, transparent 40%),
+        linear-gradient(135deg, var(--bg-a), var(--bg-b));
+      padding: 18px;
+    }
+
+    .wrap {
+      max-width: 940px;
+      margin: 0 auto;
+      background: var(--card);
+      border-radius: 16px;
+      box-shadow: 0 20px 50px rgba(2, 6, 23, 0.45);
+      padding: 24px;
+    }
+
+    h1 { margin: 0; font-size: 1.75rem; }
+    .sub { margin: 8px 0 20px; color: var(--muted); font-size: 0.95rem; }
+
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      background: #f8fafc;
+    }
+
+    .title { margin: 0 0 8px; font-size: 1rem; font-weight: 700; }
+    .meta { color: #334155; font-size: 0.9rem; line-height: 1.5; }
+
+    label { display: block; margin: 10px 0 6px; color: #334155; font-size: 0.9rem; }
+
+    input[type="file"], input[type="text"] {
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px;
+      background: #fff;
+      font-size: 0.92rem;
+    }
+
+    .row { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 10px; }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--btn-a), var(--btn-b));
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary { background: linear-gradient(135deg, var(--btn-2a), var(--btn-2b)); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    code { background: #e2e8f0; border-radius: 6px; padding: 2px 6px; }
+
+    .log {
+      background: #0b1220;
+      color: #cbd5e1;
+      border-radius: 10px;
+      padding: 12px;
+      height: 250px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .ok { color: var(--ok); }
+    .err { color: #fca5a5; }
+    .warn { color: #fcd34d; }
+    .info { color: #93c5fd; }
+
+    @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>SDK-RS Browser UI</h1>
+    <p class="sub">Keplr-authenticated UI. Backend endpoints require signed challenge + bearer token before upload/download actions.</p>
+
+    <div class="grid">
+      <section class="card">
+        <h2 class="title">Wallet Auth</h2>
+        <div class="meta" id="auth-info">Not connected</div>
+        <div class="row">
+          <button id="connect-btn">Connect Keplr</button>
+          <button id="refresh-btn" class="secondary">Refresh State</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="title">Backend</h2>
+        <div class="meta" id="backend-info">Loading backend state...</div>
+      </section>
+
+      <section class="card">
+        <h2 class="title">Upload</h2>
+        <label for="upload-file">Choose File</label>
+        <input id="upload-file" type="file" />
+        <div class="row">
+          <button id="upload-btn" disabled>Upload To Cascade</button>
+          <button id="upload-status-btn" class="secondary" disabled>Check Upload Status</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="title">Download</h2>
+        <p class="meta">Uses last uploaded action by default.</p>
+        <label for="download-action-id">Optional Action ID Override</label>
+        <input id="download-action-id" type="text" placeholder="leave empty to use last upload" />
+        <div class="row">
+          <button id="download-request-btn" disabled>Request Download</button>
+          <button id="download-status-btn" class="secondary" disabled>Check Download Status</button>
+          <button id="download-file-btn" class="secondary" disabled>Download File</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="title">Current IDs</h2>
+        <div class="meta" id="ids-box">
+          action_id: <code>-</code><br />
+          upload_task_id: <code>-</code><br />
+          download_task_id: <code>-</code>
+        </div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:16px;">
+      <h2 class="title">Activity Log</h2>
+      <div id="log" class="log"></div>
+    </section>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const logEl = $("log");
+
+    const appState = {
+      actionId: null,
+      uploadTaskId: null,
+      downloadTaskId: null,
+      chainId: null,
+      walletAddress: null,
+      token: null,
+      authRequired: true,
+    };
+
+    function addLog(message, cls = "info") {
+      const t = new Date().toLocaleTimeString();
+      const line = document.createElement("div");
+      line.className = cls;
+      line.textContent = `[${t}] ${message}`;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(message);
+    }
+
+    function parseErrorBody(text) {
+      try {
+        const json = JSON.parse(text);
+        return json.error || text;
+      } catch {
+        return text;
+      }
+    }
+
+    function authHeaders(extra = {}) {
+      if (appState.token) {
+        return { ...extra, Authorization: `Bearer ${appState.token}` };
+      }
+      return extra;
+    }
+
+    async function api(path, options = {}) {
+      const opts = { ...options };
+      opts.headers = authHeaders(opts.headers || {});
+
+      const resp = await fetch(path, opts);
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(parseErrorBody(text) || `HTTP ${resp.status}`);
+      }
+      const contentType = resp.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) return resp.json();
+      return resp;
+    }
+
+    function setActionsEnabled(enabled) {
+      $("upload-btn").disabled = !enabled;
+      $("upload-status-btn").disabled = !enabled;
+      $("download-request-btn").disabled = !enabled;
+      $("download-status-btn").disabled = !enabled;
+      $("download-file-btn").disabled = !enabled;
+    }
+
+    function renderIds() {
+      $("ids-box").innerHTML =
+        `action_id: <code>${appState.actionId || "-"}</code><br />` +
+        `upload_task_id: <code>${appState.uploadTaskId || "-"}</code><br />` +
+        `download_task_id: <code>${appState.downloadTaskId || "-"}</code>`;
+    }
+
+    async function refreshState() {
+      try {
+        const health = await api("/api/health", { headers: {} });
+        appState.chainId = health.chain_id || null;
+        appState.authRequired = !!health.auth_required;
+
+        $("backend-info").innerHTML =
+          `creator: <code>${health.creator || "-"}</code><br />` +
+          `snapi_base: <code>${health.snapi_base || "-"}</code><br />` +
+          `chain_id: <code>${health.chain_id || "-"}</code><br />` +
+          `auth_required: <code>${String(health.auth_required)}</code>`;
+
+        if (appState.token || !appState.authRequired) {
+          const latest = await api("/api/latest");
+          appState.actionId = latest.action_id || null;
+          appState.uploadTaskId = latest.upload_task_id || null;
+          appState.downloadTaskId = latest.download_task_id || null;
+          renderIds();
+        }
+      } catch (err) {
+        addLog(`Failed to refresh state: ${err.message}`, "err");
+      }
+    }
+
+    async function connectKeplr() {
+      try {
+        if (!window.keplr) {
+          throw new Error("Keplr extension not found");
+        }
+
+        await refreshState();
+        if (!appState.chainId) throw new Error("Missing backend chain_id");
+
+        await window.keplr.enable(appState.chainId);
+        const signer = window.getOfflineSigner(appState.chainId);
+        const accounts = await signer.getAccounts();
+        if (!accounts.length) throw new Error("No Keplr accounts found");
+
+        const address = accounts[0].address;
+        appState.walletAddress = address;
+
+        const challenge = await api(`/api/auth/challenge?address=${encodeURIComponent(address)}`, { headers: {} });
+        const sig = await window.keplr.signArbitrary(challenge.chain_id, address, challenge.message);
+
+        const verified = await api("/api/auth/verify", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            challenge_id: challenge.challenge_id,
+            address,
+            signature: sig.signature,
+            pubkey: sig.pub_key?.value || "",
+          }),
+        });
+
+        appState.token = verified.token;
+        $("auth-info").innerHTML = `Connected: <code>${address}</code><br />Token active`;
+        setActionsEnabled(true);
+        addLog("Keplr connected and backend auth verified", "ok");
+        await refreshState();
+      } catch (err) {
+        appState.token = null;
+        setActionsEnabled(false);
+        addLog(`Keplr auth failed: ${err.message}`, "err");
+      }
+    }
+
+    async function startUpload() {
+      const file = $("upload-file").files[0];
+      if (!file) {
+        addLog("Please select a file before upload", "warn");
+        return;
+      }
+
+      addLog(`Starting full workflow upload for ${file.name} (${file.size} bytes)...`);
+      const form = new FormData();
+      form.append("file", file);
+
+      $("upload-btn").disabled = true;
+      try {
+        const out = await api("/api/workflow/upload", { method: "POST", body: form });
+        appState.actionId = out.action_id;
+        appState.uploadTaskId = out.upload_task_id;
+        appState.downloadTaskId = null;
+        renderIds();
+        addLog(`Upload started. action_id=${out.action_id} task_id=${out.upload_task_id}`, "ok");
+      } catch (err) {
+        addLog(`Upload workflow failed: ${err.message}`, "err");
+      } finally {
+        $("upload-btn").disabled = false;
+      }
+    }
+
+    async function checkUploadStatus() {
+      if (!appState.uploadTaskId) {
+        addLog("No upload task_id yet", "warn");
+        return;
+      }
+      try {
+        const out = await api(`/api/upload/${encodeURIComponent(appState.uploadTaskId)}/summary`);
+        addLog(`Upload state=${out.state}`, out.state.includes("fail") ? "err" : "info");
+      } catch (err) {
+        addLog(`Upload status failed: ${err.message}`, "err");
+      }
+    }
+
+    async function requestDownload() {
+      const overrideActionId = $("download-action-id").value.trim();
+      const payload = overrideActionId ? { action_id: overrideActionId } : {};
+
+      if (!overrideActionId && !appState.actionId) {
+        addLog("No action available. Upload first or provide action ID override.", "warn");
+        return;
+      }
+
+      try {
+        const out = await api("/api/workflow/download", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (overrideActionId) appState.actionId = overrideActionId;
+        appState.downloadTaskId = out.task_id;
+        renderIds();
+        addLog(`Download requested. task_id=${out.task_id}`, "ok");
+      } catch (err) {
+        addLog(`Download request failed: ${err.message}`, "err");
+      }
+    }
+
+    async function checkDownloadStatus() {
+      if (!appState.downloadTaskId) {
+        addLog("No download task_id yet", "warn");
+        return;
+      }
+      try {
+        const out = await api(`/api/download/${encodeURIComponent(appState.downloadTaskId)}/summary`);
+        addLog(`Download state=${out.state}`, out.state.includes("fail") ? "err" : "info");
+      } catch (err) {
+        addLog(`Download status failed: ${err.message}`, "err");
+      }
+    }
+
+    async function downloadFile() {
+      if (!appState.downloadTaskId) {
+        addLog("No download task_id yet", "warn");
+        return;
+      }
+      try {
+        const resp = await api(`/api/download/${encodeURIComponent(appState.downloadTaskId)}/file`);
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `sdk-rs-download-${appState.downloadTaskId}.bin`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        addLog("Downloaded file successfully", "ok");
+      } catch (err) {
+        addLog(`Download file failed: ${err.message}`, "err");
+      }
+    }
+
+    $("connect-btn").addEventListener("click", connectKeplr);
+    $("refresh-btn").addEventListener("click", refreshState);
+    $("upload-btn").addEventListener("click", startUpload);
+    $("upload-status-btn").addEventListener("click", checkUploadStatus);
+    $("download-request-btn").addEventListener("click", requestDownload);
+    $("download-status-btn").addEventListener("click", checkDownloadStatus);
+    $("download-file-btn").addEventListener("click", downloadFile);
+
+    setActionsEnabled(false);
+    addLog("UI ready. Connect Keplr to authenticate.");
+    refreshState();
+  </script>
+</body>
+</html>
