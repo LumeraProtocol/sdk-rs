@@ -4,24 +4,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use bip32::{DerivationPath, XPrv};
-use bip39::Mnemonic;
-use k256::ecdsa::SigningKey as K256SigningKey;
-use lumera_sdk_rs::{CascadeConfig, CascadeSdk, RegisterTicketRequest};
-
-fn derive_signing_keys(
-    mnemonic: &str,
-) -> anyhow::Result<(cosmrs::crypto::secp256k1::SigningKey, K256SigningKey)> {
-    let m = Mnemonic::parse(mnemonic)?;
-    let seed = m.to_seed("");
-    let path = DerivationPath::from_str("m/44'/118'/0'/0/0")?;
-    let xprv = XPrv::derive_from_path(seed, &path)?;
-    let sk_bytes = xprv.private_key().to_bytes();
-    let chain_sk = cosmrs::crypto::secp256k1::SigningKey::from_slice(&sk_bytes)
-        .map_err(|e| anyhow::anyhow!("cosmrs signing key: {e}"))?;
-    let arb_sk = K256SigningKey::from_slice(&sk_bytes)?;
-    Ok((chain_sk, arb_sk))
-}
+use lumera_sdk_rs::{keys::derive_signing_keys_from_mnemonic, CascadeConfig, CascadeSdk, RegisterTicketRequest};
 
 fn extract_state(v: &serde_json::Value) -> String {
     for key in ["status", "state", "task_status"] {
@@ -69,7 +52,8 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let sdk = CascadeSdk::new(cfg);
-    let (chain_sk, arb_sk) = derive_signing_keys(&mnemonic)?;
+    let (chain_sk, arb_sk) = derive_signing_keys_from_mnemonic(&mnemonic)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     let exp_secs = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() + 172800;
     let expiration_time = exp_secs.to_string();

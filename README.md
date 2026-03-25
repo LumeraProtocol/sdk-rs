@@ -29,7 +29,11 @@ This SDK covers the full action lifecycle used by apps and services:
 
 1. **Chain client (`chain`)**
    - action params + fee lookup
+   - account info lookup
    - action registration transaction flow
+   - generic tx build/sign/broadcast utilities
+   - tx gas simulation helper + adjusted gas signing flow
+   - tx confirmation lookup/wait helpers
 
 2. **sn-api client (`snapi`)**
    - start upload

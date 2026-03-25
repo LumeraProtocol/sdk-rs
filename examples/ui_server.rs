@@ -132,25 +132,9 @@ fn random_token(len: usize) -> String {
 fn derive_signing_keys(
     mnemonic: &str,
 ) -> Result<(cosmrs::crypto::secp256k1::SigningKey, K256SigningKey), ApiError> {
-    let m = Mnemonic::parse(mnemonic).map_err(|e| ApiError {
-        error: format!("invalid LUMERA_MNEMONIC: {e}"),
-    })?;
-    let seed = m.to_seed("");
-    let path = DerivationPath::from_str("m/44'/118'/0'/0/0").map_err(|e| ApiError {
-        error: format!("invalid derivation path: {e}"),
-    })?;
-    let xprv = XPrv::derive_from_path(seed, &path).map_err(|e| ApiError {
-        error: format!("failed deriving key from mnemonic: {e}"),
-    })?;
-    let sk_bytes = xprv.private_key().to_bytes();
-    let chain_sk =
-        cosmrs::crypto::secp256k1::SigningKey::from_slice(&sk_bytes).map_err(|e| ApiError {
-            error: format!("failed creating chain signing key: {e}"),
-        })?;
-    let arb_sk = K256SigningKey::from_slice(&sk_bytes).map_err(|e| ApiError {
-        error: format!("failed creating arbitrary signing key: {e}"),
-    })?;
-    Ok((chain_sk, arb_sk))
+    lumera_sdk_rs::keys::derive_signing_keys_from_mnemonic(mnemonic).map_err(|e| ApiError {
+        error: e.to_string(),
+    })
 }
 
 fn extract_state(v: &serde_json::Value) -> String {
