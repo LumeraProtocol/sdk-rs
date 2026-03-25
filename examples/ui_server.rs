@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    str::FromStr,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -14,8 +13,6 @@ use axum::{
     Json, Router,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
-use bip32::{DerivationPath, XPrv};
-use bip39::Mnemonic;
 use k256::ecdsa::SigningKey as K256SigningKey;
 use lumera_sdk_rs::{CascadeConfig, CascadeSdk, RegisterTicketRequest};
 use rand::{distributions::Alphanumeric, Rng};

@@ -14,7 +14,11 @@ pub struct SigningIdentity {
 }
 
 impl SigningIdentity {
-    pub fn from_mnemonic(mnemonic: &str, hrp: &str, derivation_path: &str) -> Result<Self, SdkError> {
+    pub fn from_mnemonic(
+        mnemonic: &str,
+        hrp: &str,
+        derivation_path: &str,
+    ) -> Result<Self, SdkError> {
         let m = Mnemonic::parse(mnemonic)
             .map_err(|e| SdkError::Crypto(format!("invalid mnemonic: {e}")))?;
         let seed = m.to_seed("");
@@ -53,8 +57,11 @@ impl SigningIdentity {
         Ok(())
     }
 
-    pub fn validate_chain_prefix(expected_address: &str, expected_hrp: &str) -> Result<(), SdkError> {
-        let (actual_hrp, _) = expected_address.split_once('1').ok_or_else(|| {
+    pub fn validate_chain_prefix(
+        expected_address: &str,
+        expected_hrp: &str,
+    ) -> Result<(), SdkError> {
+        let (actual_hrp, _) = expected_address.rsplit_once('1').ok_or_else(|| {
             SdkError::InvalidInput(format!("invalid bech32 address: {}", expected_address))
         })?;
         if actual_hrp != expected_hrp {

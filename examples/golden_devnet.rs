@@ -1,10 +1,11 @@
 use std::{
     path::PathBuf,
-    str::FromStr,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use lumera_sdk_rs::{keys::derive_signing_keys_from_mnemonic, CascadeConfig, CascadeSdk, RegisterTicketRequest};
+use lumera_sdk_rs::{
+    keys::derive_signing_keys_from_mnemonic, CascadeConfig, CascadeSdk, RegisterTicketRequest,
+};
 
 fn extract_state(v: &serde_json::Value) -> String {
     for key in ["status", "state", "task_status"] {
@@ -52,8 +53,8 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let sdk = CascadeSdk::new(cfg);
-    let (chain_sk, arb_sk) = derive_signing_keys_from_mnemonic(&mnemonic)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let (chain_sk, arb_sk) =
+        derive_signing_keys_from_mnemonic(&mnemonic).map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     let exp_secs = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() + 172800;
     let expiration_time = exp_secs.to_string();

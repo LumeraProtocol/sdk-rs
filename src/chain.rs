@@ -441,8 +441,14 @@ impl ChainClient {
         let gas_used = v
             .get("gas_info")
             .and_then(|g| g.get("gas_used"))
-            .and_then(|x| x.as_str().and_then(|s| s.parse::<u64>().ok()).or_else(|| x.as_u64()))
-            .ok_or_else(|| SdkError::Serialization("missing gas_info.gas_used in simulate response".into()))?;
+            .and_then(|x| {
+                x.as_str()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .or_else(|| x.as_u64())
+            })
+            .ok_or_else(|| {
+                SdkError::Serialization("missing gas_info.gas_used in simulate response".into())
+            })?;
 
         Ok(gas_used)
     }
@@ -467,8 +473,15 @@ impl ChainClient {
             )
             .await?;
 
-        let simulated = self.simulate_gas_for_tx(&first).await.unwrap_or(fallback_gas_limit);
-        let adjustment = if gas_adjustment <= 0.0 { 1.3 } else { gas_adjustment };
+        let simulated = self
+            .simulate_gas_for_tx(&first)
+            .await
+            .unwrap_or(fallback_gas_limit);
+        let adjustment = if gas_adjustment <= 0.0 {
+            1.3
+        } else {
+            gas_adjustment
+        };
         let adjusted = ((simulated as f64) * adjustment).ceil() as u64;
         let gas_limit = adjusted.max(1);
 
@@ -489,12 +502,12 @@ impl ChainClient {
         let mut msg_bytes = Vec::new();
         MsgRequestActionProto {
             creator: tx.creator.clone(),
-            action_type: tx.action_type,
-            metadata: tx.metadata,
-            price: tx.price,
-            expiration_time: tx.expiration_time,
-            file_size_kbs: tx.file_size_kbs,
-            app_pubkey: tx.app_pubkey,
+            action_type: tx.action_type.clone(),
+            metadata: tx.metadata.clone(),
+            price: tx.price.clone(),
+            expiration_time: tx.expiration_time.clone(),
+            file_size_kbs: tx.file_size_kbs.clone(),
+            app_pubkey: tx.app_pubkey.clone(),
         }
         .encode(&mut msg_bytes)
         .map_err(|e| SdkError::Serialization(e.to_string()))?;
@@ -504,45 +517,56 @@ impl ChainClient {
             value: msg_bytes,
         };
 
-        let (tx_raw, _gas) = self
-            .build_signed_tx_with_simulation(
-                signing_key,
-                &tx.creator,
-                vec![any],
-                memo,
-                500_000,
-                1.3,
-            )
-            .await?;
+        let memo = memo.into();
+        for _attempt in 0..3 {
+            let (tx_raw, _gas) = self
+                .build_signed_tx_with_simulation(
+                    signing_key,
+                    &tx.creator,
+                    vec![any.clone()],
+                    memo.clone(),
+                    500_000,
+                    1.3,
+                )
+                .await?;
 
-        let broadcast = self
-            .broadcast_signed_tx(&tx_raw, BroadcastMode::Commit)
-            .await?;
+            let broadcast = self
+                .broadcast_signed_tx(&tx_raw, BroadcastMode::Commit)
+                .await?;
 
-        if broadcast.check_tx_code.unwrap_or_default() != 0 {
-            return Err(SdkError::Chain(format!(
-                "check_tx failed: {}",
-                broadcast.log
-            )));
+            if broadcast.check_tx_code.unwrap_or_default() != 0 {
+                if parse_expected_sequence(&broadcast.log).is_some() {
+                    continue;
+                }
+                return Err(SdkError::Chain(format!(
+                    "check_tx failed: {}",
+                    broadcast.log
+                )));
+            }
+            if broadcast.deliver_tx_code.unwrap_or_default() != 0 {
+                if parse_expected_sequence(&broadcast.log).is_some() {
+                    continue;
+                }
+                return Err(SdkError::Chain(format!(
+                    "deliver_tx failed: {}",
+                    broadcast.log
+                )));
+            }
+
+            let action_id = extract_action_id_from_log(&broadcast.log).ok_or_else(|| {
+                SdkError::Chain(format!(
+                    "unable to extract action_id from commit log: {}",
+                    broadcast.log
+                ))
+            })?;
+
+            return Ok(RequestActionSubmitResult {
+                tx_hash: broadcast.tx_hash,
+                action_id,
+            });
         }
-        if broadcast.deliver_tx_code.unwrap_or_default() != 0 {
-            return Err(SdkError::Chain(format!(
-                "deliver_tx failed: {}",
-                broadcast.log
-            )));
-        }
 
-        let action_id = extract_action_id_from_log(&broadcast.log).ok_or_else(|| {
-            SdkError::Chain(format!(
-                "unable to extract action_id from commit log: {}",
-                broadcast.log
-            ))
-        })?;
-
-        Ok(RequestActionSubmitResult {
-            tx_hash: broadcast.tx_hash,
-            action_id,
-        })
+        Err(SdkError::Chain("sequence retry exhausted".into()))
     }
 
     pub async fn get_account_info(&self, address: &str) -> Result<AccountInfo, SdkError> {
@@ -558,7 +582,12 @@ impl ChainClient {
         let gas_price = self.cfg.gas_price.trim();
         let split_at = gas_price
             .find(|c: char| !c.is_ascii_digit() && c != '.')
-            .ok_or_else(|| SdkError::InvalidInput(format!("invalid gas_price '{}': expected e.g. 0.025ulume", gas_price)))?;
+            .ok_or_else(|| {
+                SdkError::InvalidInput(format!(
+                    "invalid gas_price '{}': expected e.g. 0.025ulume",
+                    gas_price
+                ))
+            })?;
         let (amount_str, denom_str) = gas_price.split_at(split_at);
         let amount = amount_str
             .parse::<f64>()
@@ -628,7 +657,11 @@ impl ChainClient {
 
         let height = tx_resp
             .get("height")
-            .and_then(|x| x.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| x.as_i64()))
+            .and_then(|x| {
+                x.as_str()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .or_else(|| x.as_i64())
+            })
             .unwrap_or_default();
         let code = tx_resp
             .get("code")
@@ -699,7 +732,7 @@ impl ChainClient {
         signing_key: &cosmrs::crypto::secp256k1::SigningKey,
         creator: &str,
     ) -> Result<(), SdkError> {
-        let (hrp, _) = creator.split_once('1').ok_or_else(|| {
+        let (hrp, _) = creator.rsplit_once('1').ok_or_else(|| {
             SdkError::InvalidInput(format!("invalid creator bech32 address: {}", creator))
         })?;
 
@@ -807,7 +840,9 @@ pub fn extract_event_attribute_from_log(
     None
 }
 
-fn extract_event_attributes_from_tx_response(tx_response: &serde_json::Value) -> Vec<EventAttribute> {
+fn extract_event_attributes_from_tx_response(
+    tx_response: &serde_json::Value,
+) -> Vec<EventAttribute> {
     let mut out = Vec::new();
 
     // Preferred path for REST /cosmos/tx/v1beta1/txs: tx_response.logs[].events[].attributes[]
@@ -983,8 +1018,8 @@ mod tests {
         });
 
         let attrs = extract_event_attributes_from_tx_response(&tx_response);
-        assert!(attrs.iter().any(|a|
-            a.event_type == "action_registered" && a.key == "action_id" && a.value == "A-42"
-        ));
+        assert!(attrs.iter().any(|a| a.event_type == "action_registered"
+            && a.key == "action_id"
+            && a.value == "A-42"));
     }
 }
