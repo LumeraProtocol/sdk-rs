@@ -112,6 +112,13 @@ pub struct RequestActionSubmitResult {
 }
 
 #[derive(Debug, Clone)]
+pub struct EventAttribute {
+    pub event_type: String,
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct RequestActionTxInput {
     pub creator: String,
     pub action_type: String,
@@ -586,7 +593,77 @@ impl ChainClient {
         }
     }
 
+    pub async fn wait_for_event_attribute(
+        &self,
+        tx_hash: &str,
+        event_type: &str,
+        attr_key: &str,
+        timeout_secs: u64,
+    ) -> Result<String, SdkError> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
+        loop {
+            if let Some(attrs) = self.get_tx_event_attributes(tx_hash).await? {
+                if let Some(found) = attrs
+                    .iter()
+                    .find(|a| a.event_type == event_type && a.key == attr_key)
+                {
+                    return Ok(found.value.clone());
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(SdkError::Chain(format!(
+                    "timed out waiting for tx event attribute: tx_hash={}, event_type={}, key={}",
+                    tx_hash, event_type, attr_key
+                )));
+            }
+            sleep(Duration::from_secs(2)).await;
+        }
+    }
+
     pub async fn get_tx(&self, tx_hash: &str) -> Result<Option<TxConfirmationStatus>, SdkError> {
+        let tx_resp = self.get_tx_response_json(tx_hash).await?;
+        let Some(tx_resp) = tx_resp else {
+            return Ok(None);
+        };
+
+        let height = tx_resp
+            .get("height")
+            .and_then(|x| x.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| x.as_i64()))
+            .unwrap_or_default();
+        let code = tx_resp
+            .get("code")
+            .and_then(|x| x.as_u64())
+            .unwrap_or_default() as u32;
+        let raw_log = tx_resp
+            .get("raw_log")
+            .and_then(|x| x.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        Ok(Some(TxConfirmationStatus {
+            tx_hash: tx_hash.to_string(),
+            height,
+            code,
+            raw_log,
+        }))
+    }
+
+    pub async fn get_tx_event_attributes(
+        &self,
+        tx_hash: &str,
+    ) -> Result<Option<Vec<EventAttribute>>, SdkError> {
+        let tx_resp = self.get_tx_response_json(tx_hash).await?;
+        let Some(tx_resp) = tx_resp else {
+            return Ok(None);
+        };
+
+        Ok(Some(extract_event_attributes_from_tx_response(&tx_resp)))
+    }
+
+    async fn get_tx_response_json(
+        &self,
+        tx_hash: &str,
+    ) -> Result<Option<serde_json::Value>, SdkError> {
         let url = format!(
             "{}/cosmos/tx/v1beta1/txs/{}",
             self.cfg.rest_endpoint.trim_end_matches('/'),
@@ -611,28 +688,10 @@ impl ChainClient {
 
         let tx_resp = v
             .get("tx_response")
-            .ok_or_else(|| SdkError::Serialization("missing tx_response".into()))?;
+            .ok_or_else(|| SdkError::Serialization("missing tx_response".into()))?
+            .clone();
 
-        let height = tx_resp
-            .get("height")
-            .and_then(|x| x.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| x.as_i64()))
-            .unwrap_or_default();
-        let code = tx_resp
-            .get("code")
-            .and_then(|x| x.as_u64())
-            .unwrap_or_default() as u32;
-        let raw_log = tx_resp
-            .get("raw_log")
-            .and_then(|x| x.as_str())
-            .unwrap_or_default()
-            .to_string();
-
-        Ok(Some(TxConfirmationStatus {
-            tx_hash: tx_hash.to_string(),
-            height,
-            code,
-            raw_log,
-        }))
+        Ok(Some(tx_resp))
     }
 
     fn validate_signer_matches_creator(
@@ -710,33 +769,115 @@ struct BaseAccount {
 }
 
 pub fn extract_action_id_from_log(log: &str) -> Option<String> {
+    extract_event_attribute_from_log(log, "action_registered", "action_id")
+}
+
+pub fn extract_event_attribute_from_log(
+    log: &str,
+    event_type: &str,
+    attr_key: &str,
+) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(log).ok()?;
     let arr = v.as_array()?;
     for item in arr {
         for e in item.get("events")?.as_array()? {
-            if e.get("type").and_then(|x| x.as_str()) == Some("action_registered") {
-                for attr in e.get("attributes")?.as_array()? {
-                    let key = attr.get("key")?.as_str()?;
-                    let val = attr.get("value")?.as_str()?;
-                    if key == "action_id" {
-                        return Some(val.to_string());
-                    }
-                    let kb = STANDARD
-                        .decode(key)
-                        .ok()
-                        .and_then(|b| String::from_utf8(b).ok());
-                    let vb = STANDARD
-                        .decode(val)
-                        .ok()
-                        .and_then(|b| String::from_utf8(b).ok());
-                    if kb.as_deref() == Some("action_id") {
-                        return vb;
-                    }
+            if e.get("type").and_then(|x| x.as_str()) != Some(event_type) {
+                continue;
+            }
+            for attr in e.get("attributes")?.as_array()? {
+                let key = attr.get("key")?.as_str()?;
+                let val = attr.get("value")?.as_str()?;
+                if key == attr_key {
+                    return Some(val.to_string());
+                }
+                let kb = STANDARD
+                    .decode(key)
+                    .ok()
+                    .and_then(|b| String::from_utf8(b).ok());
+                let vb = STANDARD
+                    .decode(val)
+                    .ok()
+                    .and_then(|b| String::from_utf8(b).ok());
+                if kb.as_deref() == Some(attr_key) {
+                    return vb;
                 }
             }
         }
     }
     None
+}
+
+fn extract_event_attributes_from_tx_response(tx_response: &serde_json::Value) -> Vec<EventAttribute> {
+    let mut out = Vec::new();
+
+    // Preferred path for REST /cosmos/tx/v1beta1/txs: tx_response.logs[].events[].attributes[]
+    if let Some(logs) = tx_response.get("logs").and_then(|x| x.as_array()) {
+        for log in logs {
+            if let Some(events) = log.get("events").and_then(|x| x.as_array()) {
+                for e in events {
+                    let event_type = e
+                        .get("type")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    if let Some(attrs) = e.get("attributes").and_then(|x| x.as_array()) {
+                        for a in attrs {
+                            let key = a
+                                .get("key")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            let value = a
+                                .get("value")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            out.push(EventAttribute {
+                                event_type: event_type.clone(),
+                                key,
+                                value,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback to RPC-style events[].attributes[] shape if logs are unavailable.
+    if out.is_empty() {
+        if let Some(events) = tx_response.get("events").and_then(|x| x.as_array()) {
+            for e in events {
+                let event_type = e
+                    .get("kind")
+                    .or_else(|| e.get("type"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                if let Some(attrs) = e.get("attributes").and_then(|x| x.as_array()) {
+                    for a in attrs {
+                        let key = a
+                            .get("key")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        let value = a
+                            .get("value")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        out.push(EventAttribute {
+                            event_type: event_type.clone(),
+                            key,
+                            value,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    out
 }
 
 fn parse_expected_sequence(log: &str) -> Option<u64> {
@@ -816,5 +957,34 @@ mod tests {
     fn tdd_parse_expected_sequence() {
         let log = "account sequence mismatch, expected 14, got 5: incorrect account sequence";
         assert_eq!(parse_expected_sequence(log), Some(14));
+    }
+
+    #[test]
+    fn tdd_extract_event_attribute_from_log_json() {
+        let log = r#"[{"events":[{"type":"action_registered","attributes":[{"key":"action_id","value":"A-9"},{"key":"creator","value":"lumera1abc"}]}]}]"#;
+        assert_eq!(
+            extract_event_attribute_from_log(log, "action_registered", "creator").as_deref(),
+            Some("lumera1abc")
+        );
+    }
+
+    #[test]
+    fn tdd_extract_event_attributes_from_tx_response_logs() {
+        let tx_response = serde_json::json!({
+            "logs": [{
+                "events": [{
+                    "type": "action_registered",
+                    "attributes": [
+                        {"key": "action_id", "value": "A-42"},
+                        {"key": "creator", "value": "lumera1xyz"}
+                    ]
+                }]
+            }]
+        });
+
+        let attrs = extract_event_attributes_from_tx_response(&tx_response);
+        assert!(attrs.iter().any(|a|
+            a.event_type == "action_registered" && a.key == "action_id" && a.value == "A-42"
+        ));
     }
 }
