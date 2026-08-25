@@ -434,8 +434,14 @@ impl ChainClient {
         let gas_used = v
             .get("gas_info")
             .and_then(|g| g.get("gas_used"))
-            .and_then(|x| x.as_str().and_then(|s| s.parse::<u64>().ok()).or_else(|| x.as_u64()))
-            .ok_or_else(|| SdkError::Serialization("missing gas_info.gas_used in simulate response".into()))?;
+            .and_then(|x| {
+                x.as_str()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .or_else(|| x.as_u64())
+            })
+            .ok_or_else(|| {
+                SdkError::Serialization("missing gas_info.gas_used in simulate response".into())
+            })?;
 
         Ok(gas_used)
     }
@@ -460,8 +466,15 @@ impl ChainClient {
             )
             .await?;
 
-        let simulated = self.simulate_gas_for_tx(&first).await.unwrap_or(fallback_gas_limit);
-        let adjustment = if gas_adjustment <= 0.0 { 1.3 } else { gas_adjustment };
+        let simulated = self
+            .simulate_gas_for_tx(&first)
+            .await
+            .unwrap_or(fallback_gas_limit);
+        let adjustment = if gas_adjustment <= 0.0 {
+            1.3
+        } else {
+            gas_adjustment
+        };
         let adjusted = ((simulated as f64) * adjustment).ceil() as u64;
         let gas_limit = adjusted.max(1);
 
@@ -551,7 +564,12 @@ impl ChainClient {
         let gas_price = self.cfg.gas_price.trim();
         let split_at = gas_price
             .find(|c: char| !c.is_ascii_digit() && c != '.')
-            .ok_or_else(|| SdkError::InvalidInput(format!("invalid gas_price '{}': expected e.g. 0.025ulume", gas_price)))?;
+            .ok_or_else(|| {
+                SdkError::InvalidInput(format!(
+                    "invalid gas_price '{}': expected e.g. 0.025ulume",
+                    gas_price
+                ))
+            })?;
         let (amount_str, denom_str) = gas_price.split_at(split_at);
         let amount = amount_str
             .parse::<f64>()
@@ -615,7 +633,11 @@ impl ChainClient {
 
         let height = tx_resp
             .get("height")
-            .and_then(|x| x.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| x.as_i64()))
+            .and_then(|x| {
+                x.as_str()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .or_else(|| x.as_i64())
+            })
             .unwrap_or_default();
         let code = tx_resp
             .get("code")
